@@ -24,7 +24,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connected_remote = false;
 
     uint d_size = ui->datagram_size->text().toUInt();
-    client.set_datagram_size(d_size);
+    client.setDatagramSize(d_size);
 
     connect(&client, UDPClient::newMessage, this, &MainWindow::on_new_message);
 }
@@ -62,13 +62,13 @@ void MainWindow::on_save_btn_clicked()
 {
     QString ip_addr = ui->ip_address_sender->text();
     quint16 port = ui->port_sender->text().toInt();
-    if (!check_port(port))
+    if (!checkPort(port))
     {
         QMessageBox::warning(this, "Внимание", "Некорректный порт");
         return;
     }
 
-    bool connected = client.bind_local(ip_addr, port);
+    bool connected = client.bindLocal(ip_addr, port);
     if (! connected)
     {
         QMessageBox::warning(this, "Внимание", "Не удалось сохранить");
@@ -86,7 +86,7 @@ void MainWindow::on_connect_btn_clicked()
     QString ip_addr = ui->ip_address_receiver->text();
     quint16 port = ui->port_receiver->text().toInt();
 
-    if (!check_port(port))
+    if (!checkPort(port))
     {
         QMessageBox::warning(this, "Внимание", "Некорректный порт");
         return;
@@ -125,18 +125,18 @@ void MainWindow::on_send_btn_clicked()
 void MainWindow::on_save_d_size_clicked()
 {
     uint d_size = ui->datagram_size->text().toUInt();
-    if (!check_size(d_size))
+    if (!checkSize(d_size))
     {
         QMessageBox::warning(this, "Внимание",
                              "Размер пакета должен быть от 9 до 8192 байт");
         return;
     }
-    client.set_datagram_size(d_size);
+    client.setDatagramSize(d_size);
     QMessageBox::information(this, "Ok", "Изменения сохранены");
 }
 
 
-bool MainWindow::check_port(const quint16 &port)
+bool MainWindow::checkPort(const quint16 &port)
 {
     if (port >= 1 && port <= 65535)
         return true;
@@ -153,7 +153,7 @@ bool MainWindow::check_port(const quint16 &port)
  * для передачи сообщения
  * 8192 максимально, исходня из документации QUdpSocket
  */
-bool MainWindow::check_size(const uint &size)
+bool MainWindow::checkSize(const uint &size)
 {
     if (size >= 9 && size <= 8192)
         return true;

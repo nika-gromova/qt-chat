@@ -15,7 +15,7 @@ UDPClient::UDPClient(QObject *parent) : QObject(parent)
  * размер передаваемой информации в пакете + размер служебной информации -
  * передаваемый d_size
  */
-void UDPClient::set_datagram_size(uint &d_size)
+void UDPClient::setDatagramSize(uint &d_size)
 {
     if (d_size > 0)
     {
@@ -30,7 +30,7 @@ void UDPClient::set_datagram_size(uint &d_size)
  * @param port - порт
  * @return true, если связывание прошло успешно, иначе - false
  */
-bool UDPClient::bind_local(const QString &ip_addr, const quint16 &port)
+bool UDPClient::bindLocal(const QString &ip_addr, const quint16 &port)
 {
     bool connected = false;
     if (_socket.state() != _socket.BoundState)
@@ -80,12 +80,12 @@ void UDPClient::sendMessage(const QString &message)
     for (quint32 pos = 0; pos < ba_size; pos += datagram_size, count++)
     {
         QByteArray datagram = ba_message.mid(pos, datagram_size);
-        position = number_to_4byte(count);
+        position = numberTo4byte(count);
         datagram.prepend(position);
         current_message.append(datagram);
     }
 
-    total_count = number_to_4byte(count);
+    total_count = numberTo4byte(count);
 
     for (auto i = 0; i < current_message.size(); i++)
     {
@@ -161,7 +161,7 @@ void UDPClient::onReadyRead()
  * @param number - исходное число
  * @return 4х байтный массив с числом
  */
-QByteArray UDPClient::number_to_4byte(const quint32 &number)
+QByteArray UDPClient::numberTo4byte(const quint32 &number)
 {
     QByteArray result, tmp;
     result.resize(4);

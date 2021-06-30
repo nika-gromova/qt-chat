@@ -19,9 +19,9 @@ class UDPClient : public QObject
     Q_OBJECT
 public:
     explicit UDPClient(QObject *parent = nullptr);
-    void set_datagram_size(uint &d_size);
+    void setDatagramSize(uint &d_size);
 
-    bool bind_local(const QString &ip_addr, const quint16 &port);
+    bool bindLocal(const QString &ip_addr, const quint16 &port);
     bool connectTo(const QString &ip_addr, const quint16 &port);
     void sendMessage(const QString &message);
 
@@ -55,7 +55,7 @@ private:
     QVector<QByteArray> current_message;
 
 
-    QByteArray number_to_4byte(const quint32 &number);
+    QByteArray numberTo4byte(const quint32 &number);
 };
 
 #endif // UDPCLIENT_H

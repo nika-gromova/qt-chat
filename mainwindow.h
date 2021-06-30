@@ -51,8 +51,8 @@ private:
     bool connected_local;
     bool connected_remote;
 
-    bool check_port(const quint16 &port);
-    bool check_size(const uint &size);
+    bool checkPort(const quint16 &port);
+    bool checkSize(const uint &size);
 
 };
 
