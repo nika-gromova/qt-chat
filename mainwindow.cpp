@@ -9,16 +9,16 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    validator_port = new QIntValidator(1, 65535, this);
-    validator_size = new QIntValidator(9, 8192, this);
+    validator_int = new QIntValidator(1, 10000, this);
 
     ui->ip_address_sender->setValidator(&validator_ipv4);
-    ui->port_sender->setValidator(validator_port);
+    ui->port_sender->setValidator(validator_int);
 
     ui->ip_address_receiver->setValidator(&validator_ipv4);
-    ui->port_receiver->setValidator(validator_port);
+    ui->port_receiver->setValidator(validator_int);
 
-    ui->datagram_size->setValidator(validator_size);
+    ui->datagram_size->setValidator(validator_int);
+    ui->interval->setValidator(validator_int);
 
     connected_local = false;
     connected_remote = false;
@@ -33,8 +33,7 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
-    delete validator_port;
-    delete validator_size;
+    delete validator_int;
 }
 
 
@@ -161,3 +160,15 @@ bool MainWindow::checkSize(const uint &size)
 }
 
 
+
+void MainWindow::on_save_interval_clicked()
+{
+    int interval = ui->interval->text().toUInt();
+    if  (interval <= 0)
+    {
+        QMessageBox::warning(this, "Внимание",
+                             "Интервал должен быть больше нуля");
+        return;
+    }
+    client.setInterval(interval);
+}

@@ -40,13 +40,14 @@ private slots:
 
     void on_save_d_size_clicked();
 
+    void on_save_interval_clicked();
+
 private:
     Ui::MainWindow *ui;
     UDPClient client;
 
     QRegExpValidator validator_ipv4;
-    QIntValidator *validator_port;
-    QIntValidator *validator_size;
+    QIntValidator *validator_int;
 
     bool connected_local;
     bool connected_remote;

@@ -5,6 +5,7 @@
 #include <QUdpSocket>
 #include <QHostAddress>
 #include <QNetworkDatagram>
+#include <QTimer>
 
 /**
  * @brief Реализация клиента чата
@@ -19,11 +20,14 @@ class UDPClient : public QObject
     Q_OBJECT
 public:
     explicit UDPClient(QObject *parent = nullptr);
+    ~UDPClient();
+
     void setDatagramSize(uint &d_size);
 
     bool bindLocal(const QString &ip_addr, const quint16 &port);
     bool connectTo(const QString &ip_addr, const quint16 &port);
     void sendMessage(const QString &message);
+    void setInterval(const uint &ms);
 
 signals:
     void newMessage(const QHostAddress &sender_addr, const quint16 &sender_port,
@@ -31,6 +35,7 @@ signals:
 
 private slots:
     void onReadyRead();
+    void sendDatagram();
 
 private:
 
@@ -39,6 +44,9 @@ private:
 
     // размер сообщения в пакете
     uint datagram_size;
+
+    // интервал отправки пакета
+    uint interval;
 
     // размер служебной информации в пакете - 8 байт:
     // первые 4 - общее количество пакетов сообщения,
@@ -51,8 +59,17 @@ private:
     // порт получателя
     quint16 receiver_port;
 
+    // таймер, для задания частоты отправки пакетов
+    QTimer *tmr;
+
     // текущее отправляемое сообщение
-    QVector<QByteArray> current_message;
+    QVector<QByteArray> lates_message;
+
+    // содержит пакеты, которые необходимо отправить
+    QVector<QByteArray> message_to_send;
+
+    // текущее входящее сообщение
+    QHash<qint32, QByteArray> current_incoming_message;
 
 
     QByteArray numberTo4byte(const quint32 &number);

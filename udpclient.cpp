@@ -5,6 +5,16 @@ UDPClient::UDPClient(QObject *parent) : QObject(parent)
 {
     connect(&_socket, &QUdpSocket::readyRead, this, &UDPClient::onReadyRead);
     metadata_size = 8;
+
+    tmr = new QTimer(this);
+    connect(tmr, &QTimer::timeout, this, &UDPClient::sendDatagram);
+    tmr->start(1000);
+}
+
+
+UDPClient::~UDPClient()
+{
+    delete tmr;
 }
 
 
@@ -71,7 +81,7 @@ bool UDPClient::connectTo(const QString &ip_addr, const quint16 &port)
  */
 void UDPClient::sendMessage(const QString &message)
 {
-    current_message.clear();
+    lates_message.clear();
     QByteArray ba_message = message.toUtf8();
     quint32 ba_size = ba_message.size();
     QByteArray position, total_count;
@@ -82,19 +92,29 @@ void UDPClient::sendMessage(const QString &message)
         QByteArray datagram = ba_message.mid(pos, datagram_size);
         position = numberTo4byte(count);
         datagram.prepend(position);
-        current_message.append(datagram);
+        lates_message.append(datagram);
     }
 
     total_count = numberTo4byte(count);
 
-    for (auto i = 0; i < current_message.size(); i++)
+    for (auto i = 0; i < lates_message.size(); i++)
     {
-        current_message[i].prepend(total_count);
-        _socket.writeDatagram(current_message[i],
-                              receiver_ip_address,
-                              receiver_port);
+        lates_message[i].prepend(total_count);
+        message_to_send.append(lates_message[i]);
     }
 
+}
+
+
+/**
+ * @brief Установка интервала отправки пакетов
+ * @param ms - временной интервал (в миллисекундах)
+ *
+ */
+void UDPClient::setInterval(const uint &ms)
+{
+    interval = ms;
+    tmr->setInterval(interval);
 }
 
 
@@ -106,7 +126,7 @@ void UDPClient::sendMessage(const QString &message)
  * далее пакеты помещаются в ассоциативный массив, ключом которого является
  * порядковый номер, а значением - содержимое пакета
  *
- * далее если дошли не все пакеты, то выдается ошибка,
+ * далее если дошли не все пакеты, то ждем, пока дойдут все,
  * если все пакеты дошли, то формируется сообщение из пакетов по порядку
  *
  */
@@ -118,7 +138,6 @@ void UDPClient::onReadyRead()
     QNetworkDatagram n_datagram;
     qint64 d_size = 0;
     qint32 total_count = 0, current_position = 0;
-    QHash<qint32, QByteArray> current_message;
 
     while (_socket.hasPendingDatagrams())
     {
@@ -137,21 +156,21 @@ void UDPClient::onReadyRead()
         current_position = position.toUInt();
 
         datagram = datagram.mid(8);
-        current_message.insert(current_position, datagram);
+        current_incoming_message.insert(current_position, datagram);
     }
 
-    if (current_message.size() != total_count)
+    if (current_incoming_message.size() != total_count)
     {
-        emit newMessage(sender_addr, sender_port, QByteArray("Error"));
         return;
     }
 
     datagram.clear();
     for (auto i = 0; i < total_count; i++)
     {
-        datagram.append(current_message[i]);
+        datagram.append(current_incoming_message[i]);
     }
     emit newMessage(sender_addr, sender_port, datagram);
+    current_incoming_message.clear();
 
 }
 
@@ -169,4 +188,20 @@ QByteArray UDPClient::numberTo4byte(const quint32 &number)
     tmp.setNum(number);
     result.replace(4 - tmp.size(), tmp.size(), tmp);
     return result;
+}
+
+
+/**
+ * @brief Отправляет пакет по истечению интервала
+ *
+ */
+void UDPClient::sendDatagram()
+{
+    if (message_to_send.isEmpty())
+        return;
+
+    _socket.writeDatagram(message_to_send.last(),
+                          receiver_ip_address,
+                          receiver_port);
+    message_to_send.removeLast();
 }
