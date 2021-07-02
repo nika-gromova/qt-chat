@@ -8,7 +8,7 @@ UDPClient::UDPClient(QObject *parent) : QObject(parent)
 
     tmr = new QTimer(this);
     connect(tmr, &QTimer::timeout, this, &UDPClient::sendDatagram);
-    tmr->start(1000);
+    tmr->start(100);
 }
 
 
@@ -62,8 +62,8 @@ bool UDPClient::connectTo(const QString &ip_addr, const quint16 &port)
     bool connected = false;
     if (port != 0)
     {
-        receiver_ip_address = QHostAddress(ip_addr);
-        receiver_port = port;
+        receiver.setAddress(QHostAddress(ip_addr));
+        receiver.setPort(port);
         connected = true;
     }
     return connected;
@@ -102,7 +102,6 @@ void UDPClient::sendMessage(const QString &message)
         lates_message[i].prepend(total_count);
         message_to_send.append(lates_message[i]);
     }
-
 }
 
 
@@ -132,28 +131,29 @@ void UDPClient::setInterval(const uint &ms)
  */
 void UDPClient::onReadyRead()
 {
-    QHostAddress sender_addr;
-    quint16 sender_port;
+    Client sender;
     QByteArray datagram, count, position;
     QNetworkDatagram n_datagram;
-    qint64 d_size = 0;
-    qint32 total_count = 0, current_position = 0;
+    quint32 total_count = 0, current_position = 0;
 
     while (_socket.hasPendingDatagrams())
     {
-        d_size = _socket.pendingDatagramSize();
-        datagram.resize(d_size);
-
-        n_datagram = _socket.receiveDatagram(d_size);
+        n_datagram = _socket.receiveDatagram(_socket.pendingDatagramSize());
         datagram = n_datagram.data();
-        sender_addr = n_datagram.senderAddress();
-        sender_port = n_datagram.senderPort();
+        sender.setAddress(n_datagram.senderAddress());
+        sender.setPort(n_datagram.senderPort());
 
         count = datagram.mid(0, 4);
         total_count = count.toUInt();
 
         position = datagram.mid(4, 4);
         current_position = position.toUInt();
+
+        if (total_count == current_position)
+        {
+            emit messageDelivered(sender);
+            return;
+        }
 
         datagram = datagram.mid(8);
         current_incoming_message.insert(current_position, datagram);
@@ -169,9 +169,11 @@ void UDPClient::onReadyRead()
     {
         datagram.append(current_incoming_message[i]);
     }
-    emit newMessage(sender_addr, sender_port, datagram);
+    emit newMessage(sender, datagram);
     current_incoming_message.clear();
-
+    _socket.writeDatagram(formDeliveredAnswer(total_count),
+                          sender.getAddress(),
+                          sender.getPort());
 }
 
 
@@ -192,6 +194,22 @@ QByteArray UDPClient::numberTo4byte(const quint32 &number)
 
 
 /**
+ * @brief Формирование пакета в случае успешной доставки сообщения
+ * @param count - кодичество пакетов доставленного сообщения
+ * @return "служебный пакет" -
+ * первые 4 байта равны вторым 4м = количеству пакетов
+ */
+QByteArray UDPClient::formDeliveredAnswer(const quint32 &count)
+{
+    QByteArray answer;
+    answer.append(numberTo4byte(count));
+    answer.append(numberTo4byte(count));
+    answer.append("/0");
+    return answer;
+}
+
+
+/**
  * @brief Отправляет пакет по истечению интервала
  *
  */
@@ -201,7 +219,7 @@ void UDPClient::sendDatagram()
         return;
 
     _socket.writeDatagram(message_to_send.last(),
-                          receiver_ip_address,
-                          receiver_port);
+                          receiver.getAddress(),
+                          receiver.getPort());
     message_to_send.removeLast();
 }

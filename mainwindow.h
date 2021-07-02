@@ -24,9 +24,8 @@ public:
     ~MainWindow();
 
 public slots:
-    void on_new_message(const QHostAddress &sender_addr,
-                        const quint16 &sender_port,
-                        const QByteArray &ba_message);
+    void on_new_message(const Client &sender, const QByteArray &ba_message);
+    void on_message_delivered(const Client &sender);
 
 protected:
     void keyPressEvent(QKeyEvent *e);

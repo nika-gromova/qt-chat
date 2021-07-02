@@ -27,6 +27,8 @@ MainWindow::MainWindow(QWidget *parent) :
     client.setDatagramSize(d_size);
 
     connect(&client, UDPClient::newMessage, this, &MainWindow::on_new_message);
+    connect(&client, UDPClient::messageDelivered,
+            this, &MainWindow::on_message_delivered);
 }
 
 
@@ -37,13 +39,20 @@ MainWindow::~MainWindow()
 }
 
 
-void MainWindow::on_new_message(const QHostAddress &sender_addr,
-                                const quint16 &sender_port,
+void MainWindow::on_new_message(const Client &sender,
                                 const QByteArray &ba_message)
 {
-    QString sender_info = sender_addr.toString() + "::" + \
-            QString::number(sender_port);
+    QString sender_info = sender.getAddress().toString() + "::" + \
+            QString::number(sender.getPort());
     QString new_message = sender_info + ": " + QString(ba_message);
+    ui->message_list->addItem(new_message);
+}
+
+void MainWindow::on_message_delivered(const Client &sender)
+{
+    QString sender_info = sender.getAddress().toString() + "::" + \
+            QString::number(sender.getPort());
+    QString new_message = "Ваше сообщение доставлено: " + sender_info;
     ui->message_list->addItem(new_message);
 }
 
@@ -171,4 +180,5 @@ void MainWindow::on_save_interval_clicked()
         return;
     }
     client.setInterval(interval);
+    QMessageBox::information(this, "Ok", "Изменения сохранены");
 }

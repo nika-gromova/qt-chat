@@ -7,6 +7,8 @@
 #include <QNetworkDatagram>
 #include <QTimer>
 
+#include "client.h"
+
 /**
  * @brief Реализация клиента чата
  *
@@ -30,8 +32,8 @@ public:
     void setInterval(const uint &ms);
 
 signals:
-    void newMessage(const QHostAddress &sender_addr, const quint16 &sender_port,
-                    const QByteArray &ba_message);
+    void newMessage(const Client &sender, const QByteArray &ba_message);
+    void messageDelivered(const Client &sender);
 
 private slots:
     void onReadyRead();
@@ -53,11 +55,8 @@ private:
     // вторые 4 - порядковый номер пакета
     uint metadata_size;
 
-    // адрес получателя
-    QHostAddress receiver_ip_address;
-
-    // порт получателя
-    quint16 receiver_port;
+    // получатель
+    Client receiver;
 
     // таймер, для задания частоты отправки пакетов
     QTimer *tmr;
@@ -73,6 +72,8 @@ private:
 
 
     QByteArray numberTo4byte(const quint32 &number);
+
+    QByteArray formDeliveredAnswer(const quint32 &count);
 };
 
 #endif // UDPCLIENT_H
