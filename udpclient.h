@@ -6,8 +6,12 @@
 #include <QHostAddress>
 #include <QNetworkDatagram>
 #include <QTimer>
+#include <QFile>
+#include <QDataStream>
 
 #include "client.h"
+
+typedef quint32 count_size;
 
 /**
  * @brief Реализация клиента чата
@@ -29,10 +33,14 @@ public:
     bool bindLocal(const QString &ip_addr, const quint16 &port);
     bool connectTo(const QString &ip_addr, const quint16 &port);
     void sendMessage(const QString &message);
+    void sendFile(const QString &file_name);
+
     void setInterval(const uint &ms);
+    uint getMinDatagramSize(void);
+
 
 signals:
-    void newMessage(const Client &sender, const QByteArray &ba_message);
+    void newMessage(const Client &sender, const QString &message);
     void messageDelivered(const Client &sender);
 
 private slots:
@@ -50,10 +58,17 @@ private:
     // интервал отправки пакета
     uint interval;
 
-    // размер служебной информации в пакете - 8 байт:
-    // первые 4 - общее количество пакетов сообщения,
-    // вторые 4 - порядковый номер пакета
+    // размер служебной информации в пакете, например, - 9 байт:
+    // первый - флаг, является ли передаваемое сообщение файлом,
+    // следующие 4 - общее количество пакетов сообщения,
+    // следующие 4 - порядковый номер пакета
     uint metadata_size;
+
+    // размер числа, хранящего количество пакетов
+    uint byte_count_size;
+
+    // максимально допустимый размер названия файла (байты)
+    uint file_name_size;
 
     // получатель
     Client receiver;
@@ -68,12 +83,14 @@ private:
     QVector<QByteArray> message_to_send;
 
     // текущее входящее сообщение
-    QHash<qint32, QByteArray> current_incoming_message;
+    QHash<count_size, QByteArray> current_incoming_message;
 
 
-    QByteArray numberTo4byte(const quint32 &number);
+    QByteArray numberToByte(const count_size &number, const uint &count_b);
 
-    QByteArray formDeliveredAnswer(const quint32 &count);
+    QByteArray formDeliveredAnswer(const count_size &count);
+
+    void sendByteData(const QByteArray &data, bool is_file = false);
 };
 
 #endif // UDPCLIENT_H

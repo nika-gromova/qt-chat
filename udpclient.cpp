@@ -4,7 +4,10 @@
 UDPClient::UDPClient(QObject *parent) : QObject(parent)
 {
     connect(&_socket, &QUdpSocket::readyRead, this, &UDPClient::onReadyRead);
-    metadata_size = 8;
+    metadata_size = 9;
+    byte_count_size = 4;
+
+    file_name_size = 260;
 
     tmr = new QTimer(this);
     connect(tmr, &QTimer::timeout, this, &UDPClient::sendDatagram);
@@ -71,36 +74,48 @@ bool UDPClient::connectTo(const QString &ip_addr, const quint16 &port)
 
 
 /**
- * @brief Отправление сообщения
+ * @brief Передача сообщения
  * @param message - текст сообщения
  *
- * исходное сообщение разделяется на пакеты размером datagram_size,
- * далее к каждому пакету в начало добавляется порядковый номер пакета,
- * потом еще общее количество пакетов, на которое разделилось исходное сообщение
+ * иходное тескствое сообщение конвертируется в массив байт и отправляется
  *
  */
 void UDPClient::sendMessage(const QString &message)
 {
-    lates_message.clear();
     QByteArray ba_message = message.toUtf8();
-    quint32 ba_size = ba_message.size();
-    QByteArray position, total_count;
-    quint32 count = 0;
+    sendByteData(ba_message);
+}
 
-    for (quint32 pos = 0; pos < ba_size; pos += datagram_size, count++)
+
+/**
+ * @brief Передача файла
+ * @param file_name - название файла (полный путь)
+ *
+ * файл считывается полностью как последовательность байт (ограничение размера
+ * файла - 2ГБ);
+ * формируется короткое имя файла (собственно название), ограничение - 260 байт;
+ * короткое название записывается как часть массива байт данных файла, которое
+ * далее будет извлечено на принимающей стороне.
+ *
+ */
+void UDPClient::sendFile(const QString &file_name)
+{
+    QFile user_file(file_name);
+    QString short_file_name = file_name.mid(file_name.lastIndexOf("/") + 1);
+    QByteArray file_name_b = short_file_name.toUtf8();
+    if (file_name_b.size() >= file_name_size)
+        return;
+    if (user_file.open(QIODevice::ReadOnly))
     {
-        QByteArray datagram = ba_message.mid(pos, datagram_size);
-        position = numberTo4byte(count);
-        datagram.prepend(position);
-        lates_message.append(datagram);
-    }
+        QByteArray file_data = user_file.readAll();
+        user_file.close();
 
-    total_count = numberTo4byte(count);
-
-    for (auto i = 0; i < lates_message.size(); i++)
-    {
-        lates_message[i].prepend(total_count);
-        message_to_send.append(lates_message[i]);
+        if (file_data == "")
+            return;
+        file_name_b.append('\0');
+        file_name_b.resize(file_name_size);
+        file_data.prepend(file_name_b);
+        sendByteData(file_data, true);
     }
 }
 
@@ -114,6 +129,17 @@ void UDPClient::setInterval(const uint &ms)
 {
     interval = ms;
     tmr->setInterval(interval);
+}
+
+
+/**
+ * @brief Получение минимального размера пакета, исходя из размера служебной
+ * информации
+ * @return минимальный размер пакета данных
+ */
+uint UDPClient::getMinDatagramSize()
+{
+    return metadata_size + 1;
 }
 
 
@@ -134,7 +160,9 @@ void UDPClient::onReadyRead()
     Client sender;
     QByteArray datagram, count, position;
     QNetworkDatagram n_datagram;
-    quint32 total_count = 0, current_position = 0;
+    count_size total_count = 0, current_position = 0;
+    bool is_file = false;
+    bool ok;
 
     while (_socket.hasPendingDatagrams())
     {
@@ -143,11 +171,13 @@ void UDPClient::onReadyRead()
         sender.setAddress(n_datagram.senderAddress());
         sender.setPort(n_datagram.senderPort());
 
-        count = datagram.mid(0, 4);
-        total_count = count.toUInt();
+        is_file = (datagram[0] == '1') ? true : false;
 
-        position = datagram.mid(4, 4);
-        current_position = position.toUInt();
+        count = datagram.mid(1, byte_count_size);
+        total_count = count.toUInt(&ok, 16);
+
+        position = datagram.mid(byte_count_size + 1, byte_count_size);
+        current_position = position.toUInt(&ok, 16);
 
         if (total_count == current_position)
         {
@@ -155,7 +185,7 @@ void UDPClient::onReadyRead()
             return;
         }
 
-        datagram = datagram.mid(8);
+        datagram = datagram.mid(metadata_size);
         current_incoming_message.insert(current_position, datagram);
     }
 
@@ -169,7 +199,34 @@ void UDPClient::onReadyRead()
     {
         datagram.append(current_incoming_message[i]);
     }
-    emit newMessage(sender, datagram);
+
+    if (!is_file)
+        emit newMessage(sender, QString(datagram));
+    else
+    {
+        QByteArray file_name_b;
+        QString file_name;
+        for (auto i = 0; i < file_name_size; i++)
+            file_name_b.append(datagram[i]);
+        file_name = QString(file_name_b);
+        datagram = datagram.mid(file_name_size);
+        QFile new_file(file_name);
+        int result = 0;
+        if (new_file.open(QIODevice::ReadWrite))
+        {
+            result = new_file.write(datagram);
+            if (result != datagram.size())
+                emit newMessage(sender, "Ошибка получения файла");
+            else
+                emit newMessage(sender, "Вы получили файл: " + file_name);
+            new_file.close();
+        }
+        else
+        {
+            emit newMessage(sender, "Невозможно получить файл");
+        }
+
+    }
     current_incoming_message.clear();
     _socket.writeDatagram(formDeliveredAnswer(total_count),
                           sender.getAddress(),
@@ -182,13 +239,14 @@ void UDPClient::onReadyRead()
  * @param number - исходное число
  * @return 4х байтный массив с числом
  */
-QByteArray UDPClient::numberTo4byte(const quint32 &number)
+QByteArray UDPClient::numberToByte(const count_size &number,
+                                   const uint &count_b)
 {
     QByteArray result, tmp;
-    result.resize(4);
+    result.resize(count_b);
     result.fill('0');
-    tmp.setNum(number);
-    result.replace(4 - tmp.size(), tmp.size(), tmp);
+    tmp.setNum(number, 16);
+    result.replace(count_b - tmp.size(), tmp.size(), tmp);
     return result;
 }
 
@@ -199,13 +257,57 @@ QByteArray UDPClient::numberTo4byte(const quint32 &number)
  * @return "служебный пакет" -
  * первые 4 байта равны вторым 4м = количеству пакетов
  */
-QByteArray UDPClient::formDeliveredAnswer(const quint32 &count)
+QByteArray UDPClient::formDeliveredAnswer(const count_size &count)
 {
     QByteArray answer;
-    answer.append(numberTo4byte(count));
-    answer.append(numberTo4byte(count));
+    answer.append('0');
+    answer.append(numberToByte(count, byte_count_size));
+    answer.append(numberToByte(count, byte_count_size));
     answer.append("/0");
     return answer;
+}
+
+
+/**
+ * @brief Передача бинарных данных
+ * @param ba_message - данные (массив байт)
+ * @param is_file - флаг: true - передаваемые данные файл,
+ * иначе - обычное текстовое сообщение
+ *
+ * исходные данные разделяются на пакеты размером datagram_size, сначала к
+ * каждому пакету добавляется флаг файла; далее к каждому пакету в начало
+ * добавляется порядковый номер пакета, потом еще общее
+ * количество пакетов, на которое разделилось исходное сообщение
+ */
+void UDPClient::sendByteData(const QByteArray &ba_message, bool is_file)
+{
+    lates_message.clear();
+    count_size ba_size = ba_message.size();
+    QByteArray position, total_count;
+    count_size count = 0;
+    char file_flag = '0';
+
+    if (is_file)
+    {
+        file_flag = '1';
+    }
+
+    for (count_size pos = 0; pos < ba_size; pos += datagram_size, count++)
+    {
+        QByteArray datagram = ba_message.mid(pos, datagram_size);
+        position = numberToByte(count, byte_count_size);
+        datagram.prepend(position);
+        lates_message.append(datagram);
+    }
+
+    total_count = numberToByte(count, byte_count_size);
+
+    for (auto i = 0; i < lates_message.size(); i++)
+    {
+        lates_message[i].prepend(total_count);
+        lates_message[i].prepend(file_flag);
+        message_to_send.append(lates_message[i]);
+    }
 }
 
 

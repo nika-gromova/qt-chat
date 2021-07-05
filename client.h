@@ -15,6 +15,8 @@ public:
     QHostAddress getAddress(void) const;
     quint16 getPort(void) const;
 
+    QString formPrettyAddress(void) const;
+
 
 private:
     // адрес ipv4

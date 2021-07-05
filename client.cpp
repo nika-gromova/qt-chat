@@ -31,3 +31,9 @@ quint16 Client::getPort() const
 {
     return _port;
 }
+
+QString Client::formPrettyAddress() const
+{
+    QString info = _address.toString() + "::" + QString::number(_port);
+    return info;
+}

@@ -7,6 +7,7 @@
 #include <QRegExp>
 #include <QMessageBox>
 #include <QKeyEvent>
+#include <QFileDialog>
 
 #include "udpclient.h"
 
@@ -24,7 +25,7 @@ public:
     ~MainWindow();
 
 public slots:
-    void on_new_message(const Client &sender, const QByteArray &ba_message);
+    void on_new_message(const Client &sender, const QString &message);
     void on_message_delivered(const Client &sender);
 
 protected:
@@ -40,6 +41,8 @@ private slots:
     void on_save_d_size_clicked();
 
     void on_save_interval_clicked();
+
+    void on_file_btn_clicked();
 
 private:
     Ui::MainWindow *ui;

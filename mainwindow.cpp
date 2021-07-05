@@ -40,19 +40,16 @@ MainWindow::~MainWindow()
 
 
 void MainWindow::on_new_message(const Client &sender,
-                                const QByteArray &ba_message)
+                                const QString &message)
 {
-    QString sender_info = sender.getAddress().toString() + "::" + \
-            QString::number(sender.getPort());
-    QString new_message = sender_info + ": " + QString(ba_message);
+    QString new_message = sender.formPrettyAddress() + ": " + message;
     ui->message_list->addItem(new_message);
 }
 
 void MainWindow::on_message_delivered(const Client &sender)
 {
-    QString sender_info = sender.getAddress().toString() + "::" + \
-            QString::number(sender.getPort());
-    QString new_message = "Ваше сообщение доставлено: " + sender_info;
+    QString new_message = "Ваше сообщение доставлено: " +
+            sender.formPrettyAddress();
     ui->message_list->addItem(new_message);
 }
 
@@ -157,13 +154,13 @@ bool MainWindow::checkPort(const quint16 &port)
  * @param size - размер пакета
  * @return true, если число подходит, иначе - false
  *
- * 9 минимально, так как 8 - размер служебной информации, 1 - минимум
+ * 10 минимально, так как 9 - размер служебной информации, 1 - минимум
  * для передачи сообщения
  * 8192 максимально, исходня из документации QUdpSocket
  */
 bool MainWindow::checkSize(const uint &size)
 {
-    if (size >= 9 && size <= 8192)
+    if (size >= (client.getMinDatagramSize()) && size <= 8192)
         return true;
     return false;
 }
@@ -181,4 +178,10 @@ void MainWindow::on_save_interval_clicked()
     }
     client.setInterval(interval);
     QMessageBox::information(this, "Ok", "Изменения сохранены");
+}
+
+void MainWindow::on_file_btn_clicked()
+{
+    QString file_name = QFileDialog::getOpenFileName(this, "Выбере файл");
+    client.sendFile(file_name);
 }
