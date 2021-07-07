@@ -90,33 +90,21 @@ void UDPClient::sendMessage(const QString &message)
 /**
  * @brief Передача файла
  * @param file_name - название файла (полный путь)
+ * @return true, если файл был отправлен, false, если произошла ошибка
  *
  * файл считывается полностью как последовательность байт (ограничение размера
  * файла - 2ГБ);
- * формируется короткое имя файла (собственно название), ограничение - 260 байт;
- * короткое название записывается как часть массива байт данных файла, которое
- * далее будет извлечено на принимающей стороне.
- *
+ * собственно название файла должно быть меньше 260 байт.
  */
-void UDPClient::sendFile(const QString &file_name)
+bool UDPClient::sendFile(const QString &file_name)
 {
-    QFile user_file(file_name);
-    QString short_file_name = file_name.mid(file_name.lastIndexOf("/") + 1);
-    QByteArray file_name_b = short_file_name.toUtf8();
-    if (file_name_b.size() >= file_name_size)
-        return;
-    if (user_file.open(QIODevice::ReadOnly))
+    QByteArray file_byte_data = formFileByteData(file_name);
+    if (file_byte_data.isEmpty())
     {
-        QByteArray file_data = user_file.readAll();
-        user_file.close();
-
-        if (file_data == "")
-            return;
-        file_name_b.append('\0');
-        file_name_b.resize(file_name_size);
-        file_data.prepend(file_name_b);
-        sendByteData(file_data, true);
+        return false;
     }
+    sendByteData(file_byte_data, true);
+    return true;
 }
 
 
@@ -152,85 +140,56 @@ uint UDPClient::getMinDatagramSize()
  * порядковый номер, а значением - содержимое пакета
  *
  * далее если дошли не все пакеты, то ждем, пока дойдут все,
- * если все пакеты дошли, то формируется сообщение из пакетов по порядку
+ * если все пакеты дошли, то формируется сообщение из пакетов по порядку;
+ * если пришел файл, то из сообщения извлекается название файла, а сам файл
+ * записывается в рабочую директорию.
+ * также отправляется информация о том, что сообщение было доставлено.
  *
  */
 void UDPClient::onReadyRead()
 {
-    Client sender;
-    QByteArray datagram, count, position;
+    IncomingDatagram datagram;
+    QByteArray message;
     QNetworkDatagram n_datagram;
-    count_size total_count = 0, current_position = 0;
-    bool is_file = false;
-    bool ok;
 
     while (_socket.hasPendingDatagrams())
     {
         n_datagram = _socket.receiveDatagram(_socket.pendingDatagramSize());
-        datagram = n_datagram.data();
-        sender.setAddress(n_datagram.senderAddress());
-        sender.setPort(n_datagram.senderPort());
+        datagram.processDatagram(n_datagram, byte_count_size, metadata_size);
 
-        is_file = (datagram[0] == '1') ? true : false;
-
-        count = datagram.mid(1, byte_count_size);
-        total_count = count.toUInt(&ok, 16);
-
-        position = datagram.mid(byte_count_size + 1, byte_count_size);
-        current_position = position.toUInt(&ok, 16);
-
-        if (total_count == current_position)
+        if (datagram.isDelivered())
         {
-            emit messageDelivered(sender);
+            emit messageDelivered(datagram.getSender());
             return;
         }
 
-        datagram = datagram.mid(metadata_size);
-        current_incoming_message.insert(current_position, datagram);
+        current_incoming_message.insert(datagram.getPosition(),
+                                        datagram.getData());
     }
 
-    if (current_incoming_message.size() != total_count)
+    if (current_incoming_message.size() != datagram.getTotalCount())
     {
         return;
     }
 
-    datagram.clear();
-    for (auto i = 0; i < total_count; i++)
+    for (auto i = 0; i < current_incoming_message.size(); i++)
     {
-        datagram.append(current_incoming_message[i]);
+        message.append(current_incoming_message[i]);
     }
 
-    if (!is_file)
-        emit newMessage(sender, QString(datagram));
+    if (!datagram.isFile())
+    {
+        emit newMessage(datagram.getSender(), QString(message));
+    }
     else
     {
-        QByteArray file_name_b;
-        QString file_name;
-        for (auto i = 0; i < file_name_size; i++)
-            file_name_b.append(datagram[i]);
-        file_name = QString(file_name_b);
-        datagram = datagram.mid(file_name_size);
-        QFile new_file(file_name);
-        int result = 0;
-        if (new_file.open(QIODevice::ReadWrite))
-        {
-            result = new_file.write(datagram);
-            if (result != datagram.size())
-                emit newMessage(sender, "Ошибка получения файла");
-            else
-                emit newMessage(sender, "Вы получили файл: " + file_name);
-            new_file.close();
-        }
-        else
-        {
-            emit newMessage(sender, "Невозможно получить файл");
-        }
-
+        emit newMessage(datagram.getSender(), processIncomingFile(message));
     }
+
     current_incoming_message.clear();
-    _socket.writeDatagram(formDeliveredAnswer(total_count),
-                          sender.getAddress(),
-                          sender.getPort());
+    _socket.writeDatagram(formDeliveredAnswer(datagram.getTotalCount()),
+                          datagram.getSender().getAddress(),
+                          datagram.getSender().getPort());
 }
 
 
@@ -312,13 +271,98 @@ void UDPClient::sendByteData(const QByteArray &ba_message, bool is_file)
 
 
 /**
+ * @brief Представление файла как последовательности байт
+ * @param file_name - название файла (полный путь)
+ * @return сформироанная последовательность байт
+ *
+ * формируется короткое имя файла (собственно название);
+ * короткое название записывается как часть массива байт данных файла, которое
+ * далее будет извлечено на принимающей стороне.
+ *
+ */
+QByteArray UDPClient::formFileByteData(const QString &file_name)
+{
+    QFile user_file(file_name);
+    QByteArray file_data;
+    QString short_file_name = file_name.mid(file_name.lastIndexOf("/") + 1);
+    QByteArray file_name_b = short_file_name.toUtf8();
+    if (file_name_b.size() >= file_name_size)
+    {
+        return file_data;
+    }
+    if (user_file.open(QIODevice::ReadOnly))
+    {
+        file_data = user_file.readAll();
+        user_file.close();
+
+        if (file_data.isEmpty())
+        {
+            return file_data;
+        }
+
+        file_name_b.append('\0');
+        file_name_b.resize(file_name_size);
+        file_data.prepend(file_name_b);
+    }
+    return file_data;
+}
+
+
+/**
+ * @brief Обработка входящего файла
+ * @param datagram - последовательность байт, содержащая файл
+ * @return сообщение (либо название доставленного файла, либо сообщение
+ * об ошибке
+ *
+ * из начала сообщения извлекается название файла, далее в рабочей директории
+ * создается файл с этим название и туда записываются полученные данные
+ *
+ */
+QString UDPClient::processIncomingFile(const QByteArray &datagram)
+{
+    QString result_message;
+
+    QByteArray file_name_b, result_data;
+    QString file_name;
+    for (auto i = 0; i < file_name_size; i++)
+    {
+        file_name_b.append(datagram[i]);
+    }
+    file_name = QString(file_name_b);
+    result_data = datagram.mid(file_name_size);
+    QFile new_file(file_name);
+    int result = 0;
+    if (new_file.open(QIODevice::ReadWrite))
+    {
+        result = new_file.write(result_data);
+        if (result != result_data.size())
+        {
+            result_message = "Ошибка получения файла";
+        }
+        else
+        {
+            result_message = "Вы получили файл: " + file_name;
+        }
+        new_file.close();
+    }
+    else
+    {
+        result_message = "Невозможно получить файл";
+    }
+    return result_message;
+}
+
+
+/**
  * @brief Отправляет пакет по истечению интервала
  *
  */
 void UDPClient::sendDatagram()
 {
     if (message_to_send.isEmpty())
+    {
         return;
+    }
 
     _socket.writeDatagram(message_to_send.last(),
                           receiver.getAddress(),

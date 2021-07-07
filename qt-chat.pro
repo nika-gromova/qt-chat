@@ -29,13 +29,14 @@ SOURCES += \
         mainwindow.cpp \
     udpclient.cpp \
     client.cpp \
-    message.cpp
+    incomingdatagram.cpp
 
 HEADERS += \
         mainwindow.h \
     udpclient.h \
     client.h \
-    message.h
+    incomingdatagram.h \
+    mytypes.h
 
 FORMS += \
         mainwindow.ui

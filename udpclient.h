@@ -10,8 +10,9 @@
 #include <QDataStream>
 
 #include "client.h"
+#include "mytypes.h"
+#include "incomingdatagram.h"
 
-typedef quint32 count_size;
 
 /**
  * @brief Реализация клиента чата
@@ -33,7 +34,7 @@ public:
     bool bindLocal(const QString &ip_addr, const quint16 &port);
     bool connectTo(const QString &ip_addr, const quint16 &port);
     void sendMessage(const QString &message);
-    void sendFile(const QString &file_name);
+    bool sendFile(const QString &file_name);
 
     void setInterval(const uint &ms);
     uint getMinDatagramSize(void);
@@ -64,7 +65,7 @@ private:
     // следующие 4 - порядковый номер пакета
     uint metadata_size;
 
-    // размер числа, хранящего количество пакетов
+    // размер числа, хранящего количество пакетов, соответствует count_size
     uint byte_count_size;
 
     // максимально допустимый размер названия файла (байты)
@@ -91,6 +92,11 @@ private:
     QByteArray formDeliveredAnswer(const count_size &count);
 
     void sendByteData(const QByteArray &data, bool is_file = false);
+
+    QByteArray formFileByteData(const QString &file_name);
+
+    QString processIncomingFile(const QByteArray &datagram);
+
 };
 
 #endif // UDPCLIENT_H

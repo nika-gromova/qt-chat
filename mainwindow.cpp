@@ -133,7 +133,9 @@ void MainWindow::on_save_d_size_clicked()
     if (!checkSize(d_size))
     {
         QMessageBox::warning(this, "Внимание",
-                             "Размер пакета должен быть от 9 до 8192 байт");
+                             "Размер пакета должен быть от " + \
+                             QString::number(client.getMinDatagramSize()) + \
+                             " до 8192 байт");
         return;
     }
     client.setDatagramSize(d_size);
@@ -144,7 +146,9 @@ void MainWindow::on_save_d_size_clicked()
 bool MainWindow::checkPort(const quint16 &port)
 {
     if (port >= 1 && port <= 65535)
+    {
         return true;
+    }
     return false;
 }
 
@@ -161,7 +165,9 @@ bool MainWindow::checkPort(const quint16 &port)
 bool MainWindow::checkSize(const uint &size)
 {
     if (size >= (client.getMinDatagramSize()) && size <= 8192)
+    {
         return true;
+    }
     return false;
 }
 
@@ -180,8 +186,26 @@ void MainWindow::on_save_interval_clicked()
     QMessageBox::information(this, "Ok", "Изменения сохранены");
 }
 
+
 void MainWindow::on_file_btn_clicked()
 {
-    QString file_name = QFileDialog::getOpenFileName(this, "Выбере файл");
-    client.sendFile(file_name);
+    if (connected_local && connected_remote)
+    {
+        QString file_name = QFileDialog::getOpenFileName(this, "Выбере файл");
+        if (file_name.isEmpty())
+        {
+            return;
+        }
+        bool result = client.sendFile(file_name);
+        if (!result)
+        {
+            QMessageBox::warning(this, "Ошибка",
+                                 "Произошла ошибка при попытке отправить файл");
+        }
+    }
+    else
+    {
+        QMessageBox::warning(this, "Внимание",
+                             "Задайте параметры отправителя и получателя");
+    }
 }
